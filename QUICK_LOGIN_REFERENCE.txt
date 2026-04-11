@@ -1,0 +1,49 @@
+# Quick Login Reference
+
+## 5 Student Accounts Ready To Use ✅
+
+| # | Name | Email | Password | ID |
+|---|------|-------|----------|-----|
+| 1 | Priya Sharma | priya.sharma@student.com | Priya@123 | STU001 |
+| 2 | Rahul Kumar | rahul.kumar@student.com | Rahul@123 | STU002 |
+| 3 | Aisha Patel | aisha.patel@student.com | Aisha@123 | STU003 |
+| 4 | Vikram Singh | vikram.singh@student.com | Vikram@123 | STU004 |
+| 5 | Neha Gupta | neha.gupta@student.com | Neha@123 | STU005 |
+
+## Admin Account (For Testing)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@sgu.edu.in | admin123 |
+
+## Copy-Paste Format
+
+### Student 1
+```
+Email: priya.sharma@student.com
+Password: Priya@123
+```
+
+### Student 2
+```
+Email: rahul.kumar@student.com
+Password: Rahul@123
+```
+
+### Student 3
+```
+Email: aisha.patel@student.com
+Password: Aisha@123
+```
+
+### Student 4
+```
+Email: vikram.singh@student.com
+Password: Vikram@123
+```
+
+### Student 5
+```
+Email: neha.gupta@student.com
+Password: Neha@123
+```

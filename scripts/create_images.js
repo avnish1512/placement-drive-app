@@ -1,0 +1,11 @@
+const fs = require('fs');
+const path = require('path');
+const out = path.join(__dirname, '..', 'assets', 'images');
+if (!fs.existsSync(out)) fs.mkdirSync(out, { recursive: true });
+const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+const buf = Buffer.from(pngBase64, 'base64');
+fs.writeFileSync(path.join(out, 'icon.png'), buf);
+fs.writeFileSync(path.join(out, 'splash-icon.png'), buf);
+fs.writeFileSync(path.join(out, 'adaptive-icon.png'), buf);
+fs.writeFileSync(path.join(out, 'favicon.png'), buf);
+console.log('Wrote placeholder PNG files to', out);

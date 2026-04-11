@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Launch Web App (Chrome)",
+            "url": "http://localhost:8081",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "Start Expo Web Server"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Run Web App",
+            "configurations": ["Launch Web App (Chrome)"]
+        }
+    ]
+}
