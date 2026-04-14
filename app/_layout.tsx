@@ -47,8 +47,11 @@ function RootLayoutNav() {
           }
         }
       } else {
-        // Redirect to login if not logged in
-        router.replace("/unified-login");
+        // Redirect to login if not logged in (but not if on register page)
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+        if (!currentPath.includes('/register')) {
+          router.replace("/unified-login");
+        }
       }
     }
   }, [isAuthenticated, isLoading, isAdmin, student?.profileCompleted]);
@@ -61,6 +64,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
       {/* Auth Screens */}
       <Stack.Screen name="unified-login" options={{ headerShown: false }} />
+      <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="admin-login" options={{ headerShown: false }} />
       <Stack.Screen name="profile-setup" options={{ headerShown: false }} />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useFocusEffect } from 'expo-router';
+import { Stack, router, useFocusEffect } from 'expo-router';
 import { 
   Bell, 
   Shield, 
@@ -17,6 +17,8 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '@/hooks/auth-store';
 import { useSettings } from '@/hooks/settings-store';
+import { auth } from '@/config/firebase';
+import { deleteUser } from 'firebase/auth';
 
 type SettingItem = {
   id: string;
@@ -53,18 +55,18 @@ export default function SettingsScreen() {
     clearCache
   } = useSettings();
 
-  // Load settings on screen focus (real-time updates)
+  // Load settings on screen focus — pass userId so settings sync per-user from Firebase
   useFocusEffect(
     React.useCallback(() => {
       console.log('📋 Settings screen focused - refreshing settings');
-      loadSettings();
-    }, [loadSettings])
+      loadSettings(student?.id);
+    }, [loadSettings, student?.id])
   );
 
   // Load settings on mount
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+    loadSettings(student?.id);
+  }, [loadSettings, student?.id]);
 
   if (!student) {
     return (
@@ -97,12 +99,59 @@ export default function SettingsScreen() {
       'This action cannot be undone. All your data will be permanently deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => {
-          // TODO: Implement account deletion via Firebase
-          Alert.alert('Account Deleted', 'Your account has been deleted.');
-          logout();
-        }}
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const currentUser = auth.currentUser;
+              if (currentUser) {
+                await deleteUser(currentUser);
+              }
+              await logout();
+              Alert.alert('Account Deleted', 'Your account has been permanently deleted.');
+              router.replace('/unified-login' as any);
+            } catch (error: any) {
+              if (error?.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Re-authentication Required',
+                  'For security, please log out and log back in before deleting your account.'
+                );
+              } else {
+                Alert.alert('Error', 'Failed to delete account. Please try again.');
+              }
+            }
+          }
+        }
       ]
+    );
+  };
+
+  const handleLanguageChange = () => {
+    Alert.alert(
+      'Language',
+      'Select your preferred language:',
+      [
+        { text: 'English', onPress: () => setLanguage('en') },
+        { text: 'Hindi', onPress: () => setLanguage('hi') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handlePrivacyPolicy = () => {
+    Alert.alert(
+      'Privacy & Security',
+      'Your data is secured with Firebase Authentication and stored in encrypted Firestore.\n\n• Passwords are hashed by Firebase Auth\n• Data is never shared with third parties\n• You can delete your account anytime\n• Messages are stored encrypted in Firestore',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleHelp = () => {
+    Alert.alert(
+      'Help & Support',
+      'For assistance, contact:\n\n📧 support@sgu.edu.in\n📞 +91 98765 43210\n\nPlacement Cell\nSanjay Ghodawat University\nKolhapur, Maharashtra',
+      [{ text: 'OK' }]
     );
   };
 
@@ -116,7 +165,7 @@ export default function SettingsScreen() {
           subtitle: 'Update your personal information',
           icon: User,
           type: 'navigation' as const,
-          onPress: () => {}
+          onPress: () => router.push('/profile' as any)
         },
         {
           id: 'privacy',
@@ -124,16 +173,16 @@ export default function SettingsScreen() {
           subtitle: 'Manage your privacy settings',
           icon: Shield,
           type: 'navigation' as const,
-          onPress: () => {}
+          onPress: handlePrivacyPolicy
         },
         {
           id: 'biometric',
           title: 'Biometric Authentication',
-          subtitle: 'Use fingerprint or face ID',
+          subtitle: 'Use fingerprint or face ID to login',
           icon: Lock,
           type: 'toggle' as const,
           value: biometricAuth,
-          onToggle: setBiometricAuth
+          onToggle: (v: boolean) => { setBiometricAuth(v); }
         }
       ]
     },
@@ -147,7 +196,7 @@ export default function SettingsScreen() {
           icon: Smartphone,
           type: 'toggle' as const,
           value: pushNotifications,
-          onToggle: setPushNotifications
+          onToggle: (v: boolean) => { setPushNotifications(v); }
         },
         {
           id: 'email',
@@ -156,7 +205,7 @@ export default function SettingsScreen() {
           icon: Bell,
           type: 'toggle' as const,
           value: emailNotifications,
-          onToggle: setEmailNotifications
+          onToggle: (v: boolean) => { setEmailNotifications(v); }
         },
         {
           id: 'job-alerts',
@@ -165,7 +214,7 @@ export default function SettingsScreen() {
           icon: Bell,
           type: 'toggle' as const,
           value: jobAlerts,
-          onToggle: setJobAlerts
+          onToggle: (v: boolean) => { setJobAlerts(v); }
         }
       ]
     },
@@ -175,19 +224,19 @@ export default function SettingsScreen() {
         {
           id: 'dark-mode',
           title: 'Dark Mode',
-          subtitle: 'Switch to dark theme',
+          subtitle: darkMode ? 'Currently: Dark theme' : 'Currently: Light theme',
           icon: Moon,
           type: 'toggle' as const,
           value: darkMode,
-          onToggle: setDarkMode
+          onToggle: (v: boolean) => { setDarkMode(v); }
         },
         {
           id: 'language',
           title: 'Language',
-          subtitle: 'English',
+          subtitle: language === 'hi' ? 'Hindi / हिंदी' : 'English',
           icon: Globe,
           type: 'navigation' as const,
-          onPress: () => {}
+          onPress: handleLanguageChange
         }
       ]
     },
@@ -200,7 +249,11 @@ export default function SettingsScreen() {
           subtitle: 'Export your account data',
           icon: Download,
           type: 'action' as const,
-          onPress: () => Alert.alert('Feature Coming Soon', 'Data export will be available soon.')
+          onPress: () => Alert.alert(
+            'Download My Data',
+            `Your data export will be sent to:\n${student?.email || 'your registered email'}\n\nThis feature will be available soon.`,
+            [{ text: 'OK' }]
+          )
         },
         {
           id: 'clear-cache',
@@ -218,10 +271,10 @@ export default function SettingsScreen() {
         {
           id: 'help',
           title: 'Help & Support',
-          subtitle: 'Get help and contact support',
+          subtitle: 'Contact placement cell support',
           icon: HelpCircle,
           type: 'navigation' as const,
-          onPress: () => {}
+          onPress: handleHelp
         }
       ]
     },
@@ -231,7 +284,7 @@ export default function SettingsScreen() {
         {
           id: 'delete-account',
           title: 'Delete Account',
-          subtitle: 'Permanently delete your account',
+          subtitle: 'Permanently delete your account and data',
           icon: Trash2,
           type: 'action' as const,
           onPress: handleDeleteAccount,

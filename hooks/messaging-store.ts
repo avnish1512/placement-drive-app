@@ -7,7 +7,6 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   setDoc,
   doc,
@@ -59,13 +58,20 @@ export const [MessagingProvider, useMessaging] = createContextHook(() => {
       }
 
       const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+      const q = query(messagesRef);
 
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const loadedMessages = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Message[];
+        const loadedMessages = querySnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          // Sort by timestamp ascending (in-memory, no index needed)
+          .sort((a: any, b: any) => {
+            const timeA = a.timestamp?.toMillis?.() ?? 0;
+            const timeB = b.timestamp?.toMillis?.() ?? 0;
+            return timeA - timeB;
+          }) as Message[];
 
         // Update conversation messages in real-time
         setConversations(prev =>
@@ -267,18 +273,27 @@ export const [MessagingProvider, useMessaging] = createContextHook(() => {
   const getAdminConversations = useCallback(async (adminId: string) => {
     try {
       // Set up real-time listener for admin's conversations
+      // NOTE: We avoid combining where() + orderBy() on different fields
+      // to prevent requiring a Firestore composite index.
+      // Sorting is done in-memory instead.
       const conversationsRef = collection(db, 'conversations');
       const q = query(
         conversationsRef,
-        where('adminId', '==', adminId),
-        orderBy('lastMessageTime', 'desc')
+        where('adminId', '==', adminId)
       );
 
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const convs = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
+        const convs = querySnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          // Sort in-memory (avoids composite index requirement)
+          .sort((a: any, b: any) => {
+            const timeA = a.lastMessageTime?.toMillis?.() ?? 0;
+            const timeB = b.lastMessageTime?.toMillis?.() ?? 0;
+            return timeB - timeA;
+          }) as any[];
 
         // Update conversations with messages subscriptions
         setConversations(prevConvs => {

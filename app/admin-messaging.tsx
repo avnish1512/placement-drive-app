@@ -14,7 +14,21 @@ import { Send, ArrowLeft, Search } from 'lucide-react-native';
 import { useAuth } from '@/hooks/auth-store';
 import { useMessaging } from '@/hooks/messaging-store';
 
-const formatTime = (date: Date) => {
+// Safely convert a Firestore Timestamp, JS Date, epoch number or ISO string → JS Date
+const toJsDate = (value: any): Date => {
+  if (!value) return new Date();
+  // Firestore Timestamp object has a toDate() method
+  if (typeof value?.toDate === 'function') return value.toDate();
+  // Already a JS Date
+  if (value instanceof Date) return value;
+  // Epoch seconds (Firestore { seconds, nanoseconds })
+  if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+  // Number or parseable string
+  return new Date(value);
+};
+
+const formatTime = (rawTimestamp: any): string => {
+  const date = toJsDate(rawTimestamp);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 

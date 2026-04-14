@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/hooks/auth-store';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isTablet = screenWidth >= 768;
@@ -20,18 +22,36 @@ export default function UnifiedLoginScreen() {
       return;
     }
 
-    // Infer role by email
-    const role: 'student' | 'admin' = email.toLowerCase().includes('admin') || email.includes('avnish') ? 'admin' : 'student';
+    // Detect admin by email
+    const isAdminEmail = email.trim().toLowerCase().includes('admin');
+    const role: 'student' | 'admin' = isAdminEmail ? 'admin' : 'student';
     const result = await login(email, password, role);
-    
+
     if (result.success) {
       if (role === 'admin') {
         router.replace('/admin-dashboard' as any);
       } else {
-        router.replace('/(tab)');
+        // Check if student has completed their profile in Firestore
+        try {
+          const { getAuth } = await import('firebase/auth');
+          const firebaseUser = getAuth().currentUser;
+          if (firebaseUser) {
+            const studentSnap = await getDoc(doc(db, 'students', firebaseUser.uid));
+            if (studentSnap.exists() && studentSnap.data()?.profileCompleted === true) {
+              router.replace('/(tab)');
+            } else {
+              router.replace('/profile-setup' as any);
+            }
+          } else {
+            router.replace('/(tab)');
+          }
+        } catch {
+          // Fallback — let _layout.tsx handle the redirect
+          router.replace('/(tab)');
+        }
       }
     } else {
-      Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      Alert.alert('Login Failed', result.error || 'Invalid credentials. Please check your email and password.');
     }
   };
 
@@ -113,15 +133,6 @@ export default function UnifiedLoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.credentialsBox}>
-            <Text style={styles.credentialsHeading}>Demo Credentials:</Text>
-            <Text style={styles.credentialText}>
-              <Text style={styles.credentialLabel}>Admin:</Text> admin@sgu.edu.in / admin123
-            </Text>
-            <Text style={styles.credentialText}>
-              <Text style={styles.credentialLabel}>Student:</Text> priya.sharma@student.com / Priya@123
-            </Text>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -233,30 +244,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  credentialsBox: {
-    width: '100%',
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginTop: 16,
+  registerLink: {
+    alignItems: 'center',
+    paddingTop: 16,
   },
-  credentialsHeading: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  credentialText: {
-    fontSize: 13,
+  registerLinkText: {
+    fontSize: 14,
     color: '#6B7280',
-    marginVertical: 4,
-    lineHeight: 18,
   },
-  credentialLabel: {
+  registerLinkHighlight: {
+    color: '#6366F1',
     fontWeight: '600',
-    color: '#4B5563',
   },
 });
