@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Send, ArrowLeft, Search, MessageSquare } from 'lucide-react-native';
+import { Send, ArrowLeft, Search, MessageSquare, RefreshCw } from 'lucide-react-native';
 import { useAuth } from '@/hooks/auth-store';
 import { useMessaging } from '@/hooks/messaging-store';
+import { DEFAULT_ADMIN_ID, ADMIN_NAME } from '@/constants/admin';
 
 const toJsDate = (value: any): Date => {
   if (!value) return new Date();
@@ -151,23 +152,37 @@ export default function AdminMessagingScreen() {
   const [selectedStudentName, setSelectedStudentName] = useState('');
   const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasLoadedRef = useRef(false);
+
+  const loadConversations = () => {
+    // Always use DEFAULT_ADMIN_ID — this is what students write into conversations
+    getAdminConversations(DEFAULT_ADMIN_ID);
+  };
 
   useEffect(() => {
-    if (!admin?.id) { setIsLoading(false); return; }
-    getAdminConversations(admin.id).finally?.(() => setIsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!admin) { setIsLoading(false); return; }
+    loadConversations();
+    // Fallback: stop spinner after 6s if no conversations come in
+    const t = setTimeout(() => setIsLoading(false), 6000);
+    return () => clearTimeout(t);
   }, [admin?.id]);
 
-  // Mark loading done once conversations load
+  // Stop loading spinner as soon as conversations arrive
   useEffect(() => {
-    if (conversations.length > 0) setIsLoading(false);
-  }, [conversations.length]);
+    if (!hasLoadedRef.current && conversations !== undefined) {
+      hasLoadedRef.current = true;
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [conversations]);
 
-  // Timeout fallback
-  useEffect(() => {
-    const t = setTimeout(() => setIsLoading(false), 5000);
-    return () => clearTimeout(t);
-  }, []);
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    hasLoadedRef.current = false;
+    loadConversations();
+    setTimeout(() => setIsRefreshing(false), 3000);
+  };
 
   if (!admin) {
     return (
@@ -201,21 +216,28 @@ export default function AdminMessagingScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Student Queries</Text>
-        <Text style={styles.headerSub}>{conversations.length} conversations</Text>
+        <View>
+          <Text style={styles.headerTitle}>Student Queries</Text>
+          <Text style={styles.headerSub}>{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</Text>
+        </View>
+        <TouchableOpacity onPress={handleRefresh} style={styles.refreshBtn}>
+          <RefreshCw size={20} color="#6366F1" />
+        </TouchableOpacity>
       </View>
 
       {/* Search */}
-      <View style={styles.searchBar}>
-        <Search size={16} color="#9CA3AF" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search students..."
-          placeholderTextColor="#9CA3AF"
-          value={searchText}
-          onChangeText={setSearchText}
-        />
-      </View>
+      {conversations.length > 0 && (
+        <View style={styles.searchBar}>
+          <Search size={16} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search students..."
+            placeholderTextColor="#9CA3AF"
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </View>
+      )}
 
       {/* List */}
       {isLoading ? (
@@ -227,16 +249,27 @@ export default function AdminMessagingScreen() {
         <View style={styles.centered}>
           <MessageSquare size={48} color="#D1D5DB" />
           <Text style={styles.emptyTitle}>
-            {searchText ? 'No results found' : 'No student queries yet'}
+            {searchText ? 'No results found' : 'No student messages yet'}
           </Text>
           <Text style={styles.emptySubtitle}>
             {searchText
               ? 'Try a different search'
               : 'When students send messages, they will appear here'}
           </Text>
+          {!searchText && (
+            <TouchableOpacity style={styles.refreshAction} onPress={handleRefresh}>
+              <RefreshCw size={16} color="#6366F1" />
+              <Text style={styles.refreshActionText}>Refresh</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={['#6366F1']} />
+          }
+        >
           {filtered.map(conv => {
             const unread = (conv.messages || []).filter(
               (m: any) => m.senderRole === 'student' && !m.read
@@ -284,11 +317,13 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
 
   header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 14,
     backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
   headerSub: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  refreshBtn: { padding: 8 },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -302,6 +337,12 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 10, color: '#9CA3AF', fontSize: 14 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#374151', marginTop: 14, textAlign: 'center' },
   emptySubtitle: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  refreshAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 16, paddingHorizontal: 20, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF',
+  },
+  refreshActionText: { color: '#6366F1', fontWeight: '600', fontSize: 14 },
 
   convItem: {
     flexDirection: 'row', alignItems: 'center',
