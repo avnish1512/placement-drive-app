@@ -11,7 +11,7 @@ import {
 } from 'lucide-react-native';
 import { db } from '@/config/firebase';
 import {
-  collection, getDocs, doc, updateDoc, setDoc, deleteDoc, query, orderBy
+  collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy
 } from 'firebase/firestore';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -100,7 +100,7 @@ export default function AdminManageStudents() {
   const handleDeleteStudent = (student: Student) => {
     Alert.alert(
       '⚠️ Delete Student Permanently',
-      `This will permanently delete "${student.name}" (${student.email}) from the system.\n\nThey will no longer be able to log in.\n\nThis cannot be undone.`,
+      `Permanently delete "${student.name}"?\n\n📧 ${student.email}\n\nThis removes all their data. They will not be able to log in.\n\nThis cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -109,24 +109,17 @@ export default function AdminManageStudents() {
           onPress: async () => {
             try {
               setUpdatingId(student.id);
-              // 1. Delete the student Firestore document
+              // Delete the student Firestore document
               await deleteDoc(doc(db, 'students', student.id));
-              // 2. Record UID in deleted_students so auth-store blocks re-login
-              await setDoc(doc(db, 'deleted_students', student.id), {
-                uid: student.id,
-                email: student.email,
-                name: student.name,
-                deletedAt: new Date().toISOString(),
-              });
-              // 3. Remove from local state
+              // Remove from local state immediately
               setStudents(prev => prev.filter(s => s.id !== student.id));
-              Alert.alert(
-                '✅ Deleted',
-                `${student.name} has been permanently removed.\n\nNote: Their Firebase Auth account still exists but they cannot log in.`
-              );
-            } catch (error) {
+              Alert.alert('✅ Deleted', `${student.name} has been permanently removed.`);
+            } catch (error: any) {
               console.error('Error deleting student:', error);
-              Alert.alert('Error', 'Failed to delete student. Please try again.');
+              const msg = error?.code === 'permission-denied'
+                ? 'Permission denied. Check Firestore rules allow admin to delete students.'
+                : error?.message || 'Failed to delete student. Please try again.';
+              Alert.alert('Error', msg);
             } finally {
               setUpdatingId(null);
             }
