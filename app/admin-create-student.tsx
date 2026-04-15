@@ -7,13 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { ArrowLeft, Mail, Lock, User, Eye, EyeOff, UserPlus, CheckCircle } from 'lucide-react-native';
 import { auth, db } from '@/config/firebase';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import { useAuth } from '@/hooks/auth-store';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isTablet = screenWidth >= 768;
 
 export default function AdminCreateStudent() {
+  const { login } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,13 +37,23 @@ export default function AdminCreateStudent() {
     setIsLoading(true);
 
     try {
+      // Save the admin credentials before creating student
+      // (Firebase will auto-sign-in as the new student)
+      const ADMIN_EMAIL = 'admin@sgu.edu.in';
+      const ADMIN_PASSWORD = 'admin123';
+
       // Create Firebase Auth account for student
-      const credential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim().toLowerCase(),
+        password
+      );
+      const newUid = credential.user.uid;
       await updateProfile(credential.user, { displayName: name.trim() });
 
-      // Create a Firestore student document (incomplete profile — student will fill rest on first login)
-      await setDoc(doc(db, 'students', credential.user.uid), {
-        id: credential.user.uid,
+      // Write student Firestore doc BEFORE signing back in as admin
+      await setDoc(doc(db, 'students', newUid), {
+        id: newUid,
         name: name.trim(),
         email: email.trim().toLowerCase(),
         phone: '',
@@ -49,6 +61,7 @@ export default function AdminCreateStudent() {
         year: '',
         cgpa: 0,
         prnNumber: '',
+        enrollmentNo: '',
         skills: [],
         resume: '',
         address: '',
@@ -58,6 +71,10 @@ export default function AdminCreateStudent() {
         createdBy: 'admin',
       });
 
+      // ⚠️ Firebase auto-signed-in as student after createUserWithEmailAndPassword.
+      // Sign back in as admin immediately so admin session is restored.
+      await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
+
       setCreated({ name: name.trim(), email: email.trim().toLowerCase(), password });
     } catch (error: any) {
       let message = 'Failed to create student account.';
@@ -66,7 +83,7 @@ export default function AdminCreateStudent() {
       } else if (error.code === 'auth/invalid-email') {
         message = 'Invalid email format.';
       } else if (error.code === 'auth/weak-password') {
-        message = 'Password is too weak.';
+        message = 'Password is too weak (min 6 characters).';
       }
       Alert.alert('Error', message);
     } finally {

@@ -22,32 +22,47 @@ export default function UnifiedLoginScreen() {
       return;
     }
 
+    const trimmedEmail = email.trim().toLowerCase();
+
     // Detect admin by email
-    const isAdminEmail = email.trim().toLowerCase().includes('admin');
+    const isAdminEmail = trimmedEmail.includes('admin');
     const role: 'student' | 'admin' = isAdminEmail ? 'admin' : 'student';
-    const result = await login(email, password, role);
+    const result = await login(trimmedEmail, password, role);
 
     if (result.success) {
       if (role === 'admin') {
         router.replace('/admin-dashboard' as any);
       } else {
-        // Check if student has completed their profile in Firestore
+        // For students: check Firestore for profileCompleted flag
+        // This determines if they are new (go to info form) or returning (go to dashboard)
         try {
           const { getAuth } = await import('firebase/auth');
           const firebaseUser = getAuth().currentUser;
+
           if (firebaseUser) {
-            const studentSnap = await getDoc(doc(db, 'students', firebaseUser.uid));
-            if (studentSnap.exists() && studentSnap.data()?.profileCompleted === true) {
-              router.replace('/(tab)');
+            const studentRef = doc(db, 'students', firebaseUser.uid);
+            const studentSnap = await getDoc(studentRef);
+
+            if (studentSnap.exists()) {
+              const data = studentSnap.data();
+              if (data?.profileCompleted === true) {
+                // Returning student — go straight to dashboard
+                router.replace('/(tab)');
+              } else {
+                // New student — go to profile information form
+                router.replace('/profile-setup' as any);
+              }
             } else {
+              // No Firestore doc at all — treat as new, go to profile setup
               router.replace('/profile-setup' as any);
             }
           } else {
             router.replace('/(tab)');
           }
-        } catch {
-          // Fallback — let _layout.tsx handle the redirect
-          router.replace('/(tab)');
+        } catch (err) {
+          console.error('Error checking profile status:', err);
+          // Safe fallback: send to profile-setup (better than skipping it)
+          router.replace('/profile-setup' as any);
         }
       }
     } else {
