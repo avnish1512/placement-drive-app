@@ -56,34 +56,32 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             await AsyncStorage.setItem('user', JSON.stringify(adminUser));
             setUser(adminUser);
           } else {
-            // Check if student was permanently deleted by admin
-            const deletedCheck = await getDoc(doc(db, 'deleted_students', firebaseUser.uid));
-            if (deletedCheck.exists()) {
-              // Student was deleted — sign them out immediately
-              console.log('Blocked deleted student from logging in:', firebaseUser.email);
-              await signOut(auth);
-              await AsyncStorage.removeItem('user');
-              setUser(null);
-              setIsLoading(false);
-              Alert.alert(
-                'Account Removed',
-                'Your account has been removed. Please contact the admin.',
-                [{ text: 'OK' }]
-              );
-              return;
-            }
-
             // Load student profile from Firestore
             const studentDoc = await getDoc(doc(db, 'students', firebaseUser.uid));
             if (studentDoc.exists()) {
               const studentData = studentDoc.data() as Student;
+
+              // Check if admin has deactivated this student
+              if (studentData.isActive === false) {
+                console.log('Blocked inactive student from logging in:', firebaseUser.email);
+                await signOut(auth);
+                await AsyncStorage.removeItem('user');
+                setUser(null);
+                setIsLoading(false);
+                Alert.alert(
+                  'Account Disabled',
+                  'Your account has been disabled. Please contact the admin.',
+                  [{ text: 'OK' }]
+                );
+                return;
+              }
+
               await AsyncStorage.setItem('user', JSON.stringify(studentData));
               setUser(studentData);
               console.log('Loaded student profile:', studentData.name);
             } else {
-              // Doc doesn't exist — could be a brand-new admin-created account
-              // Create a minimal placeholder doc so auth-store has something to work with
-              // profileCompleted: false will route them to profile-setup
+              // No Firestore doc — student was created via admin panel (doc should exist)
+              // or doc was deleted. Create a minimal placeholder so they can log in.
               const basicStudent: Student = {
                 id: firebaseUser.uid,
                 name: firebaseUser.displayName || 'Student',
@@ -95,13 +93,19 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
                 skills: [],
                 profileCompleted: false,
               };
-              await setDoc(doc(db, 'students', firebaseUser.uid), basicStudent, { merge: true });
+              try {
+                await setDoc(doc(db, 'students', firebaseUser.uid), basicStudent, { merge: true });
+              } catch (writeErr) {
+                console.warn('Could not write placeholder student doc:', writeErr);
+              }
               await AsyncStorage.setItem('user', JSON.stringify(basicStudent));
               setUser(basicStudent);
             }
           }
         } catch (error) {
           console.error('Error loading user profile:', error);
+          // Do NOT leave user stuck — set to null so they see the login screen
+          setUser(null);
         }
       } else {
         await AsyncStorage.removeItem('user');

@@ -6,16 +6,36 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { ArrowLeft, Mail, Lock, User, Eye, EyeOff, UserPlus, CheckCircle } from 'lucide-react-native';
-import { auth, db } from '@/config/firebase';
-import { createUserWithEmailAndPassword, updateProfile, signInWithEmailAndPassword } from 'firebase/auth';
+import { db } from '@/config/firebase';
 import { doc, setDoc } from 'firebase/firestore';
-import { useAuth } from '@/hooks/auth-store';
+
+// ── Secondary Firebase app for creating students ──────────────────────────
+// Using a secondary app prevents createUserWithEmailAndPassword from
+// switching the ADMIN's auth session to the new student.
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+
+const SECONDARY_APP_NAME = 'student-creator';
+const firebaseConfig = {
+  apiKey: "AIzaSyAC0TYsSETT0RN36ItoyRdujhpZm_HikDA",
+  authDomain: "ignite-4d73e.firebaseapp.com",
+  projectId: "ignite-4d73e",
+  storageBucket: "ignite-4d73e.firebasestorage.app",
+  messagingSenderId: "61424015105",
+  appId: "1:61424015105:web:f132b36df294522d3b6d00",
+};
+
+function getSecondaryAuth() {
+  const existingApp = getApps().find(a => a.name === SECONDARY_APP_NAME);
+  const secondaryApp = existingApp ?? initializeApp(firebaseConfig, SECONDARY_APP_NAME);
+  return getAuth(secondaryApp);
+}
+// ─────────────────────────────────────────────────────────────────────────
 
 const { width: screenWidth } = Dimensions.get('window');
 const isTablet = screenWidth >= 768;
 
 export default function AdminCreateStudent() {
-  const { login } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,25 +57,26 @@ export default function AdminCreateStudent() {
     setIsLoading(true);
 
     try {
-      // Save the admin credentials before creating student
-      // (Firebase will auto-sign-in as the new student)
-      const ADMIN_EMAIL = 'admin@sgu.edu.in';
-      const ADMIN_PASSWORD = 'admin123';
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedName = name.trim();
 
-      // Create Firebase Auth account for student
-      const credential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim().toLowerCase(),
-        password
-      );
+      // ✅ Use SECONDARY auth instance — admin session is NOT affected at all
+      const secondaryAuth = getSecondaryAuth();
+      const credential = await createUserWithEmailAndPassword(secondaryAuth, trimmedEmail, password);
       const newUid = credential.user.uid;
-      await updateProfile(credential.user, { displayName: name.trim() });
 
-      // Write student Firestore doc BEFORE signing back in as admin
+      // Set display name on the secondary auth user
+      await updateProfile(credential.user, { displayName: trimmedName });
+
+      // Sign the secondary auth instance out (clean up)
+      await secondaryAuth.signOut();
+
+      // Write student Firestore document
+      // Admin is still signed in (primary auth) so admin write rules apply
       await setDoc(doc(db, 'students', newUid), {
         id: newUid,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        name: trimmedName,
+        email: trimmedEmail,
         phone: '',
         course: '',
         year: '',
@@ -71,12 +92,10 @@ export default function AdminCreateStudent() {
         createdBy: 'admin',
       });
 
-      // ⚠️ Firebase auto-signed-in as student after createUserWithEmailAndPassword.
-      // Sign back in as admin immediately so admin session is restored.
-      await signInWithEmailAndPassword(auth, ADMIN_EMAIL, ADMIN_PASSWORD);
-
-      setCreated({ name: name.trim(), email: email.trim().toLowerCase(), password });
+      console.log('✅ Student created successfully:', trimmedEmail, 'uid:', newUid);
+      setCreated({ name: trimmedName, email: trimmedEmail, password });
     } catch (error: any) {
+      console.error('Error creating student:', error.code, error.message);
       let message = 'Failed to create student account.';
       if (error.code === 'auth/email-already-in-use') {
         message = 'This email is already registered.';
@@ -84,6 +103,8 @@ export default function AdminCreateStudent() {
         message = 'Invalid email format.';
       } else if (error.code === 'auth/weak-password') {
         message = 'Password is too weak (min 6 characters).';
+      } else if (error.code === 'permission-denied') {
+        message = 'Permission denied. Check Firestore rules allow admin to write students.';
       }
       Alert.alert('Error', message);
     } finally {
@@ -109,7 +130,7 @@ export default function AdminCreateStudent() {
           </View>
           <Text style={styles.successTitle}>Account Created!</Text>
           <Text style={styles.successSubtitle}>
-            Share these credentials with the student.{'\n'}They will be asked to fill their profile on first login.
+            Share these credentials with the student.{'\n'}They will fill their profile on first login.
           </Text>
 
           <View style={styles.credentialsCard}>
@@ -160,7 +181,7 @@ export default function AdminCreateStudent() {
           {/* Info Banner */}
           <View style={styles.infoBanner}>
             <Text style={styles.infoText}>
-              📋 Create a student account. The student will use these credentials to log in and complete their profile (name, PRN, course, etc.) on first login.
+              📋 Create a student account. The student will use these credentials to log in and complete their profile on first login.
             </Text>
           </View>
 
@@ -227,7 +248,10 @@ export default function AdminCreateStudent() {
             disabled={isLoading}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.submitBtnText}>Creating Account...</Text>
+              </>
             ) : (
               <>
                 <UserPlus size={18} color="#FFFFFF" />
